@@ -19,10 +19,11 @@ int parse_uri(char *uri, char *target_addr, char *path, int  *port);
 void format_log_entry(char *logstring, struct sockaddr_in *sockaddr, char *uri, int size);
 
 void echo(int connfd) {
-  size_t n;
-  char buf[MAXLINE], uri[MAXLINE], target_addr[MAXLINE], path[MAXLINE];  
+  size_t n,m;
+  char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
   int port;
   rio_t rio;
+  
   Rio_readinitb(&rio, connfd);
   while((n = Rio_readlineb(&rio, buf, MAXLINE)) != 0) {
     //    Rio_writen(connfd, buf, n);
@@ -30,10 +31,23 @@ void echo(int connfd) {
     // if there is no error in parsing uri
     if(ret >= 0) {
       int serverfd = Open_clientfd(target_addr, port);
-      
+      rio_t rio_s;
+      char buffer[MAXLINE];
+      Rio_readinitb(&rio_s, serverfd);
+      // create request string
+      printf("GET %s HTTP/1.1\n", path);
+      sprintf(request, "GET %s HTTP/1.1\n\n", path);
+      Rio_writen(serverfd, request, sizeof(request));
+      // read from server and write to client
+      while((m = Rio_readlineb(&rio_s, buffer, MAXLINE)) != 0) {
+	Rio_writen(connfd, buffer, m);
+      }
+      Close(serverfd);
     }   
   }
 }
+
+
 
 /* 
  * main - Main routine for the proxy program 
@@ -105,7 +119,8 @@ int parse_uri(char *uri, char *hostname, char *pathname, int *port)
     /* Extract the path */
     pathbegin = strchr(hostbegin, '/');
     if (pathbegin == NULL) {
-	pathname[0] = '\0';
+      pathname[0] = '/';
+      pathname[1] = '\0';
     }
     else {
 	pathbegin++;	
