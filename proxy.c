@@ -12,11 +12,14 @@
 
 #include "csapp.h"
 
+#define MAXWORDS 100
+
 /*
  * Function prototypes
  */
 int parse_uri(char *uri, char *target_addr, char *path, int  *port);
 void format_log_entry(char *logstring, struct sockaddr_in *sockaddr, char *uri, int size);
+char** read_disallowedwords();
 
 void echo(int connfd) {
   size_t n,m;
@@ -39,12 +42,31 @@ void echo(int connfd) {
       sprintf(request, "GET %s HTTP/1.1\n\n", path);
       Rio_writen(serverfd, request, sizeof(request));
       // read from server and write to client
-      while((m = Rio_readlineb(&rio_s, buffer, MAXLINE)) != 0) {
+      while((m = Rio_readnb(&rio_s, buffer, MAXLINE)) != 0) {
 	Rio_writen(connfd, buffer, m);
       }
       Close(serverfd);
     }   
   }
+}
+
+char** read_disallowedwords() {
+  char** dwords = malloc(MAXWORDS * sizeof(char*));
+  FILE* file = fopen("DisallowedWords","r");
+  // if could not open file
+  if(file == NULL) {
+    fprintf(stderr, "Can't open file DisallowedWords.\n");
+    exit(1);
+  }
+  // read from file
+  char word[200];
+  int i=0;
+  while( fgets(word, MAXLINE, file) != NULL) {
+    dwords[i] = malloc(sizeof(char) * strlen(word));
+    strcpy(dwords[i++],word);
+  }
+  dwords[i] = NULL;
+  return dwords;
 }
 
 
@@ -54,6 +76,7 @@ void echo(int connfd) {
  */
 int main(int argc, char **argv)
 {
+    char** dis_words = read_disallowedwords();
 
     /* Check arguments */
     if (argc != 2) {
@@ -119,8 +142,7 @@ int parse_uri(char *uri, char *hostname, char *pathname, int *port)
     /* Extract the path */
     pathbegin = strchr(hostbegin, '/');
     if (pathbegin == NULL) {
-      pathname[0] = '/';
-      pathname[1] = '\0';
+      pathname[0] = '\0';
     }
     else {
 	pathbegin++;	
