@@ -21,11 +21,13 @@ int parse_uri(char *uri, char *target_addr, char *path, int  *port);
 void format_log_entry(char *logstring, struct sockaddr_in *sockaddr, char *uri, int size);
 char** read_disallowedwords();
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
+ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n);
 void Rio_writen_w(int fd, void *usrbuf, size_t n);
 
 void echo(int connfd) {
   size_t n,m;
-  char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
+  char buf[MAXLINE] = "\0", request[MAXLINE] = "\0", 
+    target_addr[MAXLINE] = "\0", path[MAXLINE] = "\0";
   int port;
   rio_t rio;
   char method[MAXLINE], URI[MAXLINE], version[MAXLINE];
@@ -34,26 +36,30 @@ void echo(int connfd) {
   while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) != 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
     if(strcmp(method,"GET") != 0) continue;
-    strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
+    //strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
 
     int ret = parse_uri(URI, target_addr, path, &port);
+
+    printf("hostname: %s, path: %s, port: %d\n", target_addr, path, port); 
+
     // printf("%s\n", target_addr);
     // if there is no error in parsing uri
     if(ret >= 0) {
       int serverfd = Open_clientfd(target_addr, port);      
       rio_t rio_s;
       char buffer[MAXBUF];
-      printf("3\n");
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);      
-      Rio_writen_w(serverfd, "\n", strlen("\n"));
-      printf("5\n");
+      Rio_writen_w(serverfd, "\r\n", strlen("\r\n"));
       // read from server and write to client      
-      while((m = Rio_readlineb_w(&rio_s, buffer, MAXBUF)) > 0) {
+      while((m = Rio_readnb_w(&rio_s, buffer, MAXBUF)) > 0) {
 	Rio_writen_w(connfd, buffer, m);
       }
       Close(serverfd);
-    }   
+    }
+    
+    buf[0] = '\0', request[0] = '\0', target_addr[0] = '\0';
+    path[0] = '\0', method[0]  = '\0', URI[0] = '\0';
   }
 }
 
@@ -212,6 +218,17 @@ ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN)
   }
   return rc;
 } 
+
+ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n)
+{
+  ssize_t rc;
+
+  if ((rc = rio_readnb(rp, usrbuf, n)) < 0) {
+    fprintf(stderr, "Rio_readnb_w error: %s\n", strerror(errno));
+    return -1;
+  }
+  return rc;
+}
 
 void Rio_writen_w(int fd, void *usrbuf, size_t n) 
 {
