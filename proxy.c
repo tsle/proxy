@@ -21,9 +21,11 @@ int parse_uri(char *uri, char *target_addr, char *path, int  *port);
 void format_log_entry(char *logstring, struct sockaddr_in *sockaddr, char *uri, int size);
 char** read_disallowedwords();
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
+ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n);
 void Rio_writen_w(int fd, void *usrbuf, size_t n);
 
 void echo(int connfd) {
+
   size_t n;
   int port;
   rio_t rio, rio_s;
@@ -51,7 +53,10 @@ void echo(int connfd) {
       }
       printf("END OF INNER LOOP\n");
       Close(serverfd);
-    }   
+    }
+    
+    buf[0] = '\0', request[0] = '\0', target_addr[0] = '\0';
+    path[0] = '\0', method[0]  = '\0', URI[0] = '\0';
   }
   printf("END OF OUTER LOOP\n");
   Close(connfd);
@@ -212,6 +217,17 @@ ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN)
   }
   return rc;
 } 
+
+ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n)
+{
+  ssize_t rc;
+
+  if ((rc = rio_readnb(rp, usrbuf, n)) < 0) {
+    fprintf(stderr, "Rio_readnb_w error: %s\n", strerror(errno));
+    return -1;
+  }
+  return rc;
+}
 
 void Rio_writen_w(int fd, void *usrbuf, size_t n) 
 {
