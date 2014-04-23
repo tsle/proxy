@@ -20,36 +20,38 @@
 int parse_uri(char *uri, char *target_addr, char *path, int  *port);
 void format_log_entry(char *logstring, struct sockaddr_in *sockaddr, char *uri, int size);
 char** read_disallowedwords();
+ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
+void Rio_writen_w(int fd, void *usrbuf, size_t n);
 
 void echo(int connfd) {
   size_t n,m;
   char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
   int port;
   rio_t rio;
+  char method[MAXLINE], URI[MAXLINE], version[MAXLINE];
   
   Rio_readinitb(&rio, connfd);
-  while((n = Rio_readlineb(&rio, buf, MAXLINE)) != 0) {
-    //    Rio_writen(connfd, buf, n);
-    int ret = parse_uri(buf, target_addr, path, &port);
+  while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) != 0) {
+    sscanf(buf, "%s %s %s", method, URI, version);
+    if(strcmp(method,"GET") != 0) continue;
+    strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
+
+    int ret = parse_uri(URI, target_addr, path, &port);
+    // printf("%s\n", target_addr);
     // if there is no error in parsing uri
     if(ret >= 0) {
-      int serverfd = Open_clientfd(target_addr, port);
+      int serverfd = Open_clientfd(target_addr, port);      
       rio_t rio_s;
-      char buffer[MAXLINE];
+      char buffer[MAXBUF];
+      printf("3\n");
       Rio_readinitb(&rio_s, serverfd);
-      // create request string
-      printf("GET %s HTTP/1.1\n", path);
-      sprintf(request, "GET %s HTTP/1.1\n", path);
-      Rio_writen(serverfd, request, sizeof(request));
-      // read from server and write to client
-      while((m = Rio_readnb(&rio_s, buffer, MAXLINE)) != 0) {
-	Rio_writen(connfd, buffer, m);
+      Rio_writen_w(serverfd, buf, n);      
+      Rio_writen_w(serverfd, "\n", strlen("\n"));
+      printf("5\n");
+      // read from server and write to client      
+      while((m = Rio_readlineb_w(&rio_s, buffer, MAXBUF)) > 0) {
+	Rio_writen_w(connfd, buffer, m);
       }
-      /*
-      if((m = Rio_readnb(&rio_s, buffer, MAX)) != 0) {
-	Rio_writen(connfd, buffer, m);
-      }
-      */
       Close(serverfd);
     }   
   }
@@ -157,8 +159,8 @@ int parse_uri(char *uri, char *hostname, char *pathname, int *port)
       pathname[0] = '\0';
     }
     else {
-	pathbegin++;	
-	strcpy(pathname, pathbegin);
+      pathbegin++;
+      strcpy(pathname, pathbegin);
     }
 
     return 0;
@@ -198,6 +200,23 @@ void format_log_entry(char *logstring, struct sockaddr_in *sockaddr,
 
     /* Return the formatted log entry string */
     sprintf(logstring, "%s: %d.%d.%d.%d %s", time_str, a, b, c, d, uri);
+}
+
+ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN) 
+{
+  ssize_t rc;
+
+  if ((rc = rio_readlineb(rp, usrbuf, MAXLEN)) < 0){
+    fprintf(stderr, "Rio_readlineb_w error: %s\n", strerror(errno));
+    return 0;
+  }
+  return rc;
+} 
+
+void Rio_writen_w(int fd, void *usrbuf, size_t n) 
+{
+  if (rio_writen(fd, usrbuf, n) != n)
+    fprintf(stderr, "Rio_writen_w error: %s\n", strerror(errno));
 }
 
 
