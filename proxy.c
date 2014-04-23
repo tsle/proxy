@@ -24,37 +24,37 @@ ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
 void Rio_writen_w(int fd, void *usrbuf, size_t n);
 
 void echo(int connfd) {
-  size_t n,m;
-  char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
+  size_t n;
   int port;
-  rio_t rio;
+  rio_t rio, rio_s;
   char method[MAXLINE], URI[MAXLINE], version[MAXLINE];
+  char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
+  int serverfd;
   
   Rio_readinitb(&rio, connfd);
-  while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) != 0) {
+  while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
-    if(strcmp(method,"GET") != 0) continue;
     strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
-
+    
     int ret = parse_uri(URI, target_addr, path, &port);
-    // printf("%s\n", target_addr);
     // if there is no error in parsing uri
     if(ret >= 0) {
-      int serverfd = Open_clientfd(target_addr, port);      
-      rio_t rio_s;
-      char buffer[MAXBUF];
-      printf("3\n");
+      serverfd = Open_clientfd(target_addr, port);            
+      printf("%s\n", buf);
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);      
       Rio_writen_w(serverfd, "\n", strlen("\n"));
-      printf("5\n");
       // read from server and write to client      
-      while((m = Rio_readlineb_w(&rio_s, buffer, MAXBUF)) > 0) {
-	Rio_writen_w(connfd, buffer, m);
+      while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
+	//printf("%d-----------------------------------------------\n%s\n",n,buf);	
+	Rio_writen_w(connfd, buf, n);	
       }
+      printf("END OF INNER LOOP\n");
       Close(serverfd);
     }   
   }
+  printf("END OF OUTER LOOP\n");
+  Close(connfd);
 }
 
 char** read_disallowedwords() {
@@ -114,7 +114,7 @@ int main(int argc, char **argv)
       haddrp = inet_ntoa(clientaddr.sin_addr);
       printf("server connected to %s (%s)\n", hp->h_name, haddrp);
       echo(connfd);
-      Close(connfd);      
+      //      Close(connfd);      
     }
 
     exit(0);
