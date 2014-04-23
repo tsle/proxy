@@ -39,12 +39,17 @@ void echo(int connfd) {
       Rio_readinitb(&rio_s, serverfd);
       // create request string
       printf("GET %s HTTP/1.1\n", path);
-      sprintf(request, "GET %s HTTP/1.1\n\n", path);
+      sprintf(request, "GET %s HTTP/1.1\n", path);
       Rio_writen(serverfd, request, sizeof(request));
       // read from server and write to client
       while((m = Rio_readnb(&rio_s, buffer, MAXLINE)) != 0) {
 	Rio_writen(connfd, buffer, m);
       }
+      /*
+      if((m = Rio_readnb(&rio_s, buffer, MAX)) != 0) {
+	Rio_writen(connfd, buffer, m);
+      }
+      */
       Close(serverfd);
     }   
   }
@@ -62,6 +67,8 @@ char** read_disallowedwords() {
   char word[200];
   int i=0;
   while( fgets(word, MAXLINE, file) != NULL) {
+    char* p = strchr(word,'\n');
+    if(p) *p = '\0';
     dwords[i] = malloc(sizeof(char) * strlen(word));
     strcpy(dwords[i++],word);
   }
@@ -77,6 +84,11 @@ char** read_disallowedwords() {
 int main(int argc, char **argv)
 {
     char** dis_words = read_disallowedwords();
+    // print out disallowed words
+    int i=0;
+    while(dis_words[i] != NULL) {
+      printf("%s\n", dis_words[i++]);
+    }
 
     /* Check arguments */
     if (argc != 2) {
