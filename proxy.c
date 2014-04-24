@@ -34,31 +34,29 @@ void echo(int connfd) {
   int serverfd;
   
   Rio_readinitb(&rio, connfd);
-  while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
+  if((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
-    strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
+    if(strstr(buf, "HTTP/1.1"))
+      strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
     
     int ret = parse_uri(URI, target_addr, path, &port);
     // if there is no error in parsing uri
     if(ret >= 0) {
       serverfd = Open_clientfd(target_addr, port);            
-      printf("%s\n", buf);
+      //printf("%s\n", buf);
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);      
-      Rio_writen_w(serverfd, "\n", strlen("\n"));
+      Rio_writen_w(serverfd, "\r\n", strlen("\r\n"));
       // read from server and write to client      
       while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
-	//printf("%d-----------------------------------------------\n%s\n",n,buf);	
+	//	printf("%d-----------------------------------------------\n%s\n",n,buf);	
 	Rio_writen_w(connfd, buf, n);	
       }
-      printf("END OF INNER LOOP\n");
+      //printf("END OF INNER LOOP\n");
       Close(serverfd);
     }
-    
-    buf[0] = '\0', request[0] = '\0', target_addr[0] = '\0';
-    path[0] = '\0', method[0]  = '\0', URI[0] = '\0';
   }
-  printf("END OF OUTER LOOP\n");
+  //printf("END OF OUTER LOOP\n");
   Close(connfd);
 }
 
