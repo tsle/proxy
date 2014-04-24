@@ -23,23 +23,29 @@ char** read_disallowedwords();
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
 ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n);
 void Rio_writen_w(int fd, void *usrbuf, size_t n);
+int block(char* buf, char** dwords);
+char** read_disallowedwords();
+void free_disallowedwords(char** dwords);
 
-void echo(int connfd) {
+void echo(int connfd, struct sockaddr_in *clientaddr) {
 
   size_t n;
   int port;
   rio_t rio, rio_s;
-  char method[MAXLINE], URI[MAXLINE], version[MAXLINE];
+  char method[16], URI[MAXLINE], version[16];
   char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
   int serverfd;
+  char** dwords = read_disallowedwords();
   
   Rio_readinitb(&rio, connfd);
   while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
-    strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
-    
+
+    //strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
+
     int ret = parse_uri(URI, target_addr, path, &port);
     // if there is no error in parsing uri
+
     if(ret >= 0) {
       serverfd = Open_clientfd(target_addr, port);            
       printf("%s\n", buf);
@@ -47,18 +53,23 @@ void echo(int connfd) {
       Rio_writen_w(serverfd, buf, n);      
       Rio_writen_w(serverfd, "\n", strlen("\n"));
       // read from server and write to client      
+      int t_size = 0;
       while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
 	//printf("%d-----------------------------------------------\n%s\n",n,buf);	
 	Rio_writen_w(connfd, buf, n);	
+	t_size += n;
+
+	if (block(buf, dwords)) printf("%s\n", buf);
       }
-      printf("END OF INNER LOOP\n");
       Close(serverfd);
+
+      char logstring[MAXLINE]; 
+      format_log_entry(logstring, clientaddr, URI, t_size);
+      printf("%s\n", logstring);
     }
-    
-    buf[0] = '\0', request[0] = '\0', target_addr[0] = '\0';
-    path[0] = '\0', method[0]  = '\0', URI[0] = '\0';
   }
-  printf("END OF OUTER LOOP\n");
+  free_disallowedwords(dwords);
+
   Close(connfd);
 }
 
@@ -83,7 +94,26 @@ char** read_disallowedwords() {
   return dwords;
 }
 
+void free_disallowedwords(char** dwords) {
+  unsigned int i=0;
+  for(; dwords[i] != NULL; i++) {
+    free(dwords[i]);
+  } 
+  free(dwords);
+}
 
+int block(char* buf, char** dwords) {
+  char* text = malloc(strlen(buf) + 1);
+  strcpy(text, buf);
+
+  unsigned int i=0;
+  for(; dwords[i] != NULL; i++) {
+    if (strstr(text, dwords[i]) != NULL) return 1;
+  }
+  free(text);
+
+  return 0;
+} 
 
 /* 
  * main - Main routine for the proxy program 
@@ -118,7 +148,7 @@ int main(int argc, char **argv)
 			 sizeof(clientaddr.sin_addr.s_addr), AF_INET);
       haddrp = inet_ntoa(clientaddr.sin_addr);
       printf("server connected to %s (%s)\n", hp->h_name, haddrp);
-      echo(connfd);
+      echo(connfd, &clientaddr);
       //      Close(connfd);      
     }
 
