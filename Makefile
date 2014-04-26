@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g 
 LDFLAGS = -lpthread
 
-OBJS = proxy.o csapp.o
+OBJS = proxy.o csapp.o token.o
 
 all: proxy
 
@@ -14,6 +14,9 @@ csapp.o: csapp.c
 
 proxy.o: proxy.c
 	$(CC) $(CFLAGS) -c proxy.c
+
+token.o: token.c
+	$(CC) $(CFLAGS) -c token.c
 
 clean:
 	rm -f *~ *.o proxy core
