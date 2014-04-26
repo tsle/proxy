@@ -45,20 +45,29 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
 
     int ret = parse_uri(URI, target_addr, path, &port);
     // if there is no error in parsing uri
-    if(ret >= 0) {
-      serverfd = Open_clientfd(target_addr, port);            
-      //printf("%s\n", buf);
+    if(ret >= 0) {      
+      serverfd = Open_clientfd(target_addr, port);
       Rio_readinitb(&rio_s, serverfd);
-      Rio_writen_w(serverfd, buf, n);      
+      Rio_writen_w(serverfd, buf, n);
+      printf("%d %s", n, buf);
+      
+      while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
+	Rio_writen_w(serverfd, buf, n);
+	printf("%d %s", n, buf);
+	if(strcmp(buf, "\r\n") == 0) {
+	  printf("break\n");
+	  break;
+	}
+      }
+      
       Rio_writen_w(serverfd, "\r\n", strlen("\r\n"));
       // read from server and write to client      
       int t_size = 0;
       while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
-	//	printf("%d-----------------------------------------------\n%s\n",n,buf);	
+	printf("%s", buf);
 	Rio_writen_w(connfd, buf, n);	
 	t_size += n;
-
-	if (block(buf, dwords)) printf("%s\n", buf);
+	// if (block(buf, dwords)) printf("%s\n", buf);
       }
       //printf("END OF INNER LOOP\n");
       Close(serverfd);
@@ -147,7 +156,6 @@ int main(int argc, char **argv)
       hp = Gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr,
 			 sizeof(clientaddr.sin_addr.s_addr), AF_INET);
       haddrp = inet_ntoa(clientaddr.sin_addr);
-      printf("server connected to %s (%s)\n", hp->h_name, haddrp);
       echo(connfd, &clientaddr);
       Close(connfd);      
     }
@@ -231,7 +239,6 @@ void format_log_entry(char *logstring, struct sockaddr_in *sockaddr,
     b = (host >> 16) & 0xff;
     c = (host >> 8) & 0xff;
     d = host & 0xff;
-
 
     /* Return the formatted log entry string */
     sprintf(logstring, "%s: %d.%d.%d.%d %s", time_str, a, b, c, d, uri);
