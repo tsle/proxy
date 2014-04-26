@@ -40,38 +40,36 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
   Rio_readinitb(&rio, connfd);
   if((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
-    if(strstr(buf, "HTTP/1.1"))
-      strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
-
+    strncpy(strstr(buf,"HTTP/1.1"), "HTTP/1.0", 8);
+    
+    printf("%s", buf);
     int ret = parse_uri(URI, target_addr, path, &port);
     // if there is no error in parsing uri
     if(ret >= 0) {      
       serverfd = Open_clientfd(target_addr, port);
       Rio_readinitb(&rio_s, serverfd);
-      Rio_writen_w(serverfd, buf, n);
-      //      printf("%d %s", n, buf);
-      
+      Rio_writen_w(serverfd, buf, n);     
+      // write headers
       while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
-	if(strstr(buf,"Host:")) {
-	  Rio_writen_w(serverfd, buf, n);
-	  //	  printf("%d %s", n, buf);
+	// avoid connection keep alive header
+	char* connection = strstr(buf, "Connection: keep-alive");
+	if(connection) {
+	  strncpy(connection, "Connection: close\r\n", 20);
 	}
-	if(strcmp(buf, "\r\n") == 0) {
-	  printf("break\n");
+	printf("%s", buf);
+	Rio_writen_w(serverfd, buf, n);
+	if(strcmp(buf, "\r\n") == 0) {	  
 	  break;
 	}
       }
-      
-      Rio_writen_w(serverfd, "\r\n", strlen("\r\n"));
-      // read from server and write to client      
+      // read from server and write to client
       int t_size = 0;
       while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
-	//printf("%s", buf);
 	Rio_writen_w(connfd, buf, n);	
 	t_size += n;
-	// if (block(buf, dwords)) printf("%s\n", buf);
+	//if (block(buf, dwords)) printf("%s\n", buf);
       }
-      //printf("END OF INNER LOOP\n");
+
       Close(serverfd);
 
       char logstring[MAXLINE]; 
@@ -80,7 +78,6 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
     }
   }
 
-  //printf("END OF OUTER LOOP\n");
   free_disallowedwords(dwords);
 }
 
@@ -150,9 +147,8 @@ int main(int argc, char **argv)
 
     port = atoi(argv[1]);
     listenfd = Open_listenfd(port);
-    
+    clientlen = sizeof(clientaddr);    
     while(1) {
-      clientlen = sizeof(clientaddr);
       connfd = Accept(listenfd, (SA*)&clientaddr, &clientlen);
       /* Determine the domain name and IP address of the client */
       hp = Gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr,
