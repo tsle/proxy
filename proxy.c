@@ -49,11 +49,13 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
       serverfd = Open_clientfd(target_addr, port);
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);
-      printf("%d %s", n, buf);
+      //      printf("%d %s", n, buf);
       
       while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
-	Rio_writen_w(serverfd, buf, n);
-	printf("%d %s", n, buf);
+	if(strstr(buf,"Host:")) {
+	  Rio_writen_w(serverfd, buf, n);
+	  //	  printf("%d %s", n, buf);
+	}
 	if(strcmp(buf, "\r\n") == 0) {
 	  printf("break\n");
 	  break;
@@ -64,7 +66,7 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
       // read from server and write to client      
       int t_size = 0;
       while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
-	printf("%s", buf);
+	//printf("%s", buf);
 	Rio_writen_w(connfd, buf, n);	
 	t_size += n;
 	// if (block(buf, dwords)) printf("%s\n", buf);
