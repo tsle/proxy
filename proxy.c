@@ -20,6 +20,7 @@
  */
 int parse_uri(char *uri, char *target_addr, char *path, int  *port);
 void format_log_entry(char *logstring, struct sockaddr_in *sockaddr, char *uri, int size);
+void logit(char *logstring, int blocked, int not_found, int size);
 char** read_disallowedwords();
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
 ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n);
@@ -30,7 +31,7 @@ char** read_disallowedwords();
 void free_disallowedwords(char** dwords);
 char* cpystr(char* str);
 
-void echo(int connfd, struct sockaddr_in *clientaddr) {
+void echo(int connfd, struct sockaddr_in *clientaddr, char** dwords) {
 
   size_t n;
   int port;
@@ -38,38 +39,46 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
   char method[16], URI[MAXLINE], version[16];
   char buf[MAXLINE], request[MAXLINE], target_addr[MAXLINE], path[MAXLINE];
   int serverfd;
-  char** dwords = read_disallowedwords();
   
   Rio_readinitb(&rio, connfd);
+
   if((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
     //if(strstr(buf, "HTTP/1.1"))
     //strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
 
-
     int ret = parse_uri(URI, target_addr, path, &port);
     // if there is no error in parsing uri
-    if(ret >= 0) {      
+    if(ret >= 0) {   
       serverfd = Open_clientfd_w(target_addr, port);
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);     
       // write headers
       while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
 	// avoid connection keep alive header
-	char* connection = strstr(buf, "Connection: keep-alive");
+	/*char* connection = strstr(buf, "Connection:");
 	if(connection) {
-	  strncpy(connection, "Connection: close\r\n", 20);
+	  strncpy(buf, "Connection: close\r\n", strlen("Connection: close\r\n")+1);
 	  Rio_writen_w(serverfd, "Proxy-Connection: close\r\n", 
 		       strlen("Proxy-Connection: close\r\n"));
 	}
+	if (strstr(buf, "Cookie:") != NULL) continue;
+	if (strstr(buf, "User-Agent:") != NULL) continue;
+	if (strstr(buf, "Accept:") != NULL) continue;
+	if (strstr(buf, "Accept-") != NULL) continue;
+	*/
 	printf("%s", buf);
 	Rio_writen_w(serverfd, buf, n);
-	if(strcmp(buf, "\r\n") == 0) {	  
+	if(strcmp(buf, "\r\n") == 0  || strstr(buf, "Host:") != NULL) {
+	  Rio_writen_w(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
+	  Rio_writen_w(serverfd, "Proxy-Connection: close\r\n", 
+		       strlen("Proxy-Connection: close\r\n"));
+	  Rio_writen_w(serverfd, "\r\n\r\n", strlen("\r\n\r\n"));
 	  break;
 	}
       }
       // read from server and write to client      
-      int t_size = 0;
+      int t_size = 0, blocked = 0, not_found=0;
       struct token** head = (struct token**) malloc(sizeof(struct token*));
       struct token* hd = (struct token*) malloc(sizeof(struct token));
       t_size = Rio_readnb_w(&rio_s, buf, MAXLINE);
@@ -77,7 +86,9 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
       hd->size = t_size; 
       hd->next = NULL;
       *head = hd;
-     
+      blocked = block(hd->text, dwords);
+      not_found = (strstr(buf, "404 Not Found") != NULL);
+
       while((n = Rio_readnb_w(&rio_s, buf, MAXLINE)) > 0) {
 	//Rio_writen_w(connfd, buf, n);
 	struct token* tk = (struct token*) malloc(sizeof(struct token));
@@ -85,23 +96,28 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
 	tk->size = n;
 	t_size += n;
 	addToken(head, tk);
+	if (!blocked) blocked = block(buf, dwords);
       }
 
-      struct token* temp = hd;
-      while(temp != NULL) {
-	Rio_writen_w(connfd, temp->text, temp->size);
-	temp = temp->next;
+      if (!blocked) {
+	struct token* temp = hd;
+	while(temp != NULL) {
+	  Rio_writen_w(connfd, temp->text, temp->size);
+	  temp = temp->next;
+	}
+      } else {
+	Rio_writen_w(connfd, "BLOCKED \n", strlen("BLOCKED"));
       }
 
       freeTokenList(head);
       Close(serverfd);
 
       char logstring[MAXLINE]; 
+      printf("%d\n", t_size);
       format_log_entry(logstring, clientaddr, URI, t_size);
-      printf("%s\n", logstring);
+      logit(logstring, blocked, not_found, t_size);
     }
   }
-  free_disallowedwords(dwords);
 }
 
 char** read_disallowedwords() {
@@ -181,10 +197,11 @@ int main(int argc, char **argv)
       hp = Gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr,
 			 sizeof(clientaddr.sin_addr.s_addr), AF_INET);
       haddrp = inet_ntoa(clientaddr.sin_addr);
-      echo(connfd, &clientaddr);
+      echo(connfd, &clientaddr, dis_words);
       Close(connfd);      
     }
-
+    free_disallowedwords(dis_words);
+    printf("I've left the unleavable loop!\n");
     exit(0);
 }
 
@@ -267,6 +284,23 @@ void format_log_entry(char *logstring, struct sockaddr_in *sockaddr,
 
     /* Return the formatted log entry string */
     sprintf(logstring, "%s: %d.%d.%d.%d %s", time_str, a, b, c, d, uri);
+}
+
+void logit(char* logstring, int blocked, int not_found, int size) {
+  FILE* file = fopen("log_file.txt", "a");
+  if (blocked) {
+    sprintf(logstring, "%s %d (BLOCKED: Page has disallowed words)\n", logstring, size);
+  } else if (not_found) {
+    sprintf(logstring, "%s (NOTFOUND)\n", logstring);
+  } else {
+    sprintf(logstring, "%s %d\n", logstring, size);
+  }
+  
+  printf("%s\n", logstring); 
+  fprintf(file, "%s\n", logstring);
+  if(fclose(file) != 0) {
+    fprintf(stderr, "Error closing log file\n.");
+  }
 }
 
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN) 
