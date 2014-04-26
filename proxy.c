@@ -52,14 +52,12 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
       serverfd = Open_clientfd_w(target_addr, port);
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);
-      
       while((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
 	Rio_writen_w(serverfd, buf, n);
 	if(strcmp(buf, "\r\n") == 0 || strstr(buf, "Host:") != NULL) {
 	  Rio_writen_w(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
 	  Rio_writen_w(serverfd, "Proxy-Connection: close\r\n", 
 		       strlen("Proxy-Connection: close\r\n"));
-	  break;
 	}
       }
       Rio_writen_w(serverfd, "\r\n", strlen("\r\n"));
