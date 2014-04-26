@@ -11,6 +11,7 @@
  */ 
 
 #include "csapp.h"
+#include "token.h"
 
 #define MAXWORDS 100
 
@@ -23,9 +24,11 @@ char** read_disallowedwords();
 ssize_t Rio_readlineb_w(rio_t *rp, void *usrbuf, size_t MAXLEN);
 ssize_t Rio_readnb_w(rio_t *rp, void *usrbuf, size_t n);
 void Rio_writen_w(int fd, void *usrbuf, size_t n);
+int Open_clientfd_w(char *hostname, int port);
 int block(char* buf, char** dwords);
 char** read_disallowedwords();
 void free_disallowedwords(char** dwords);
+char* cpystr(char* str);
 
 void echo(int connfd, struct sockaddr_in *clientaddr) {
 
@@ -40,13 +43,14 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
   Rio_readinitb(&rio, connfd);
   if((n = Rio_readlineb_w(&rio, buf, MAXLINE)) > 0) {
     sscanf(buf, "%s %s %s", method, URI, version);
-    strncpy(strstr(buf,"HTTP/1.1"), "HTTP/1.0", 8);
-    
-    printf("%s", buf);
+    //if(strstr(buf, "HTTP/1.1"))
+    //strncpy(strstr(buf, "HTTP/1.1"), "HTTP/1.0", 8);
+
+
     int ret = parse_uri(URI, target_addr, path, &port);
     // if there is no error in parsing uri
     if(ret >= 0) {      
-      serverfd = Open_clientfd(target_addr, port);
+      serverfd = Open_clientfd_w(target_addr, port);
       Rio_readinitb(&rio_s, serverfd);
       Rio_writen_w(serverfd, buf, n);     
       // write headers
@@ -55,6 +59,8 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
 	char* connection = strstr(buf, "Connection: keep-alive");
 	if(connection) {
 	  strncpy(connection, "Connection: close\r\n", 20);
+	  Rio_writen_w(serverfd, "Proxy-Connection: close\r\n", 
+		       strlen("Proxy-Connection: close\r\n"));
 	}
 	printf("%s", buf);
 	Rio_writen_w(serverfd, buf, n);
@@ -62,14 +68,32 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
 	  break;
 	}
       }
-      // read from server and write to client
+      // read from server and write to client      
       int t_size = 0;
-      while((n = Rio_readnb(&rio_s, buf, MAXLINE)) > 0) {
-	Rio_writen_w(connfd, buf, n);	
+      struct token** head = (struct token**) malloc(sizeof(struct token*));
+      struct token* hd = (struct token*) malloc(sizeof(struct token));
+      t_size = Rio_readnb_w(&rio_s, buf, MAXLINE);
+      hd->text = cpystr(buf);
+      hd->size = t_size; 
+      hd->next = NULL;
+      *head = hd;
+     
+      while((n = Rio_readnb_w(&rio_s, buf, MAXLINE)) > 0) {
+	//Rio_writen_w(connfd, buf, n);
+	struct token* tk = (struct token*) malloc(sizeof(struct token));
+	tk->text = cpystr(buf);
+	tk->size = n;
 	t_size += n;
-	//if (block(buf, dwords)) printf("%s\n", buf);
+	addToken(head, tk);
       }
 
+      struct token* temp = hd;
+      while(temp != NULL) {
+	Rio_writen_w(connfd, temp->text, temp->size);
+	temp = temp->next;
+      }
+
+      freeTokenList(head);
       Close(serverfd);
 
       char logstring[MAXLINE]; 
@@ -77,7 +101,6 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
       printf("%s\n", logstring);
     }
   }
-
   free_disallowedwords(dwords);
 }
 
@@ -98,6 +121,10 @@ char** read_disallowedwords() {
     dwords[i] = malloc(sizeof(char) * strlen(word));
     strcpy(dwords[i++],word);
   }
+
+  if (fclose(file)) {
+    fprintf(stderr, "Error closing file\n");
+  };
   dwords[i] = NULL;
   return dwords;
 }
@@ -270,4 +297,18 @@ void Rio_writen_w(int fd, void *usrbuf, size_t n)
     fprintf(stderr, "Rio_writen_w error: %s\n", strerror(errno));
 }
 
+int Open_clientfd_w(char* hostname, int port) {
+  int rc;
 
+  if ((rc = open_clientfd(hostname, port)) < 0) {
+    fprintf(stderr, "Open_clientfd_w error: %s\n", strerror(errno));
+  }
+  return rc;
+}
+
+char* cpystr(char* str) {
+  int size = strlen(str);
+  char *cpy = (char*) malloc((size+1)*sizeof(char));
+  strcpy(cpy, str);
+  return cpy;
+}
