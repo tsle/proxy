@@ -58,6 +58,7 @@ void echo(int connfd, struct sockaddr_in *clientaddr) {
 	  Rio_writen_w(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
 	  Rio_writen_w(serverfd, "Proxy-Connection: close\r\n", 
 		       strlen("Proxy-Connection: close\r\n"));
+	  break;
 	}
       }
       Rio_writen_w(serverfd, "\r\n", strlen("\r\n"));
