@@ -67,7 +67,6 @@ void echo(int connfd, struct sockaddr_in *clientaddr, char** dwords) {
 	if (strstr(buf, "Accept:") != NULL) continue;
 	if (strstr(buf, "Accept-") != NULL) continue;
 	*/
-	printf("%s", buf);
 	Rio_writen_w(serverfd, buf, n);
 	if(strcmp(buf, "\r\n") == 0  || strstr(buf, "Host:") != NULL) {
 	  Rio_writen_w(serverfd, "Connection: close\r\n", strlen("Connection: close\r\n"));
@@ -90,7 +89,6 @@ void echo(int connfd, struct sockaddr_in *clientaddr, char** dwords) {
       not_found = (strstr(buf, "404 Not Found") != NULL);
 
       while((n = Rio_readnb_w(&rio_s, buf, MAXLINE)) > 0) {
-	//Rio_writen_w(connfd, buf, n);
 	struct token* tk = (struct token*) malloc(sizeof(struct token));
 	tk->text = cpystr(buf);
 	tk->size = n;
@@ -118,6 +116,7 @@ void echo(int connfd, struct sockaddr_in *clientaddr, char** dwords) {
       logit(logstring, blocked, not_found, t_size);
     }
   }
+  printf(": %d\n", n);
 }
 
 char** read_disallowedwords() {
