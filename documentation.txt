@@ -1,0 +1,14 @@
+Proxy Server by Tuan Le and Khang Le
+
+The implemented proxy server is an iterative proxy server. In the main routine, a socket is opened
+and listened to for incoming requests. A set of blocked words are read from a disallowed words file,
+and each request is monitored to block any pages that contain a subset of the disallowed words. The
+proxy server first takes in the request and extracts the destination server from the URI. It then
+makes a connection to this destination server and relays the request along with the host header,
+connection header, and proxy connection header. The connection header is forced to be closed in
+our implementation. Once the request is sent on behalf of the client, the proxy server reads the
+response and verifies that it does not contain any blocked words. The response is read into a
+linked list of character buffers, each of size 8192. The linked list allows for easy addition.
+The block routine iterates through this linked list, checking each buffer for the disallowed
+words. If none are present, then the linked list is iterated through again to send to the
+client. Connection is closed with the server and then the client.
